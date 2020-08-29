@@ -12,14 +12,24 @@ import numpy as np
 
 
 def tf_msg_to_pos_quat(tf_msg, quat_order='xyzw'):
-    return np.array([tf_msg.transform.translation.x,
-                     tf_msg.transform.translation.y,
-                     tf_msg.transform.translation.z,
-                     getattr(tf_msg.transform.rotation, quat_order[0]),
-                     getattr(tf_msg.transform.rotation, quat_order[1]),
-                     getattr(tf_msg.transform.rotation, quat_order[2]),
-                     getattr(tf_msg.transform.rotation, quat_order[3])
-    ])
+    if hasattr(tf_msg, 'header'):  # check to see if stamped or not
+        return np.array([tf_msg.transform.translation.x,
+                         tf_msg.transform.translation.y,
+                         tf_msg.transform.translation.z,
+                         getattr(tf_msg.transform.rotation, quat_order[0]),
+                         getattr(tf_msg.transform.rotation, quat_order[1]),
+                         getattr(tf_msg.transform.rotation, quat_order[2]),
+                         getattr(tf_msg.transform.rotation, quat_order[3])
+        ])
+    else:
+        return np.array([tf_msg.translation.x,
+                         tf_msg.translation.y,
+                         tf_msg.translation.z,
+                         getattr(tf_msg.rotation, quat_order[0]),
+                         getattr(tf_msg.rotation, quat_order[1]),
+                         getattr(tf_msg.rotation, quat_order[2]),
+                         getattr(tf_msg.rotation, quat_order[3])
+                         ])
 
 def mat_to_pos_quat(mat, quat_order='xyzw'):
     pos = mat[:3, 3]

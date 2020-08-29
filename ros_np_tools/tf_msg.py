@@ -5,6 +5,7 @@ import time
 
 # ros
 import tf2_ros
+import rospy
 import tf.transformations as tf_trans
 from geometry_msgs.msg import (Pose, Transform,
                                TransformStamped, PoseStamped,
@@ -16,6 +17,7 @@ import numpy as np
 # internal
 from ros_np_tools.pose_msg import mat_to_pose_msg
 from ros_np_tools.tf_mat import tf_msg_to_mat
+from ros_np_tools.pos_quat_np import tf_msg_to_pos_quat
 
 class TransformWithUpdate(TransformStamped):
     def __init__(self, tf_buffer, target_frame=None, source_frame=None, tf_stamped_msg=None):
@@ -57,6 +59,9 @@ class TransformWithUpdate(TransformStamped):
 
     def as_mat(self):
         return tf_msg_to_mat(self.transform)
+
+    def as_pos_quat(self):
+        return tf_msg_to_pos_quat(self.transform)
 
 def pose_msg_to_tf_msg(p_msg):
     if hasattr(p_msg, 'header'):  # check to see if stamped or not
