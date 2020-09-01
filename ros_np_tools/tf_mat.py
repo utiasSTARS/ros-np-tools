@@ -42,3 +42,15 @@ def tf_msg_to_mat(tf_msg):
         return pose_msg_to_mat(tf_msg_to_pose_msg(tf_msg).pose)
     else:
         return pose_msg_to_mat(tf_msg_to_pose_msg(tf_msg))
+
+def pos_quat_to_mat(pos_quat):
+    mat = np.eye(4)
+    mat[:3, 3] = pos_quat[:3]
+    mat[:3, :3] = tf_trans.quaternion_matrix(pos_quat[3:])[:3, :3]
+    return mat
+
+def pos_eul_to_mat(pos_eul, eul_axes='sxyz'):
+    mat = np.eye(4)
+    mat[:3, 3] = pos_eul[:3]
+    mat[:3, :3] = tf_trans.euler_matrix(*pos_eul[3:], axes=eul_axes)[:3, :3]
+    return mat

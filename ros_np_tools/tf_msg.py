@@ -60,8 +60,13 @@ class TransformWithUpdate(TransformStamped):
     def as_mat(self):
         return tf_msg_to_mat(self.transform)
 
-    def as_pos_quat(self):
-        return tf_msg_to_pos_quat(self.transform)
+    def as_pos_quat(self, quat_order='xyzw'):
+        return tf_msg_to_pos_quat(self.transform, quat_order)
+
+    def as_pos_eul(self, eul_axes='sxyz'):
+        pos_quat = self.as_pos_quat()
+        eul = tf_trans.euler_from_quaternion(pos_quat[3:], eul_axes)
+        return np.concatenate([pos_quat[:3], eul])
 
 def pose_msg_to_tf_msg(p_msg):
     if hasattr(p_msg, 'header'):  # check to see if stamped or not
@@ -88,5 +93,25 @@ def pose_msg_to_tf_msg(p_msg):
 def mat_to_tf_msg(mat):
     return pose_msg_to_tf_msg(mat_to_pose_msg(mat))
 
+def pos_quat_to_tf_msg(pos_quat, quat_order='xyzw'):
+    tf_msg = Transform()
+    tf_msg.translation.x = pos_quat[0]
+    tf_msg.translation.y = pos_quat[1]
+    tf_msg.translation.z = pos_quat[2]
+    setattr(tf_msg.rotation, quat_order[0], pos_quat[3])
+    setattr(tf_msg.rotation, quat_order[1], pos_quat[4])
+    setattr(tf_msg.rotation, quat_order[2], pos_quat[5])
+    setattr(tf_msg.rotation, quat_order[3], pos_quat[6])
+    return tf_msg
 
-
+def pos_eul_to_tf_msg(pos_eul, eul_axes='sxyz'):
+    tf_msg = Transform()
+    tf_msg.translation.x = pos_eul[0]
+    tf_msg.translation.y = pos_eul[1]
+    tf_msg.translation.z = pos_eul[2]
+    quat = tf_trans.quaternion_from_euler(*pos_eul[3:], axes=eul_axes)
+    tf_msg.rotation.x = quat[0]
+    tf_msg.rotation.y = quat[1]
+    tf_msg.rotation.z = quat[2]
+    tf_msg.rotation.w = quat[3]
+    return tf_msg

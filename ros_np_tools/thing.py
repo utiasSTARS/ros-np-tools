@@ -5,11 +5,12 @@ import rospy
 import tf
 import tf.transformations as tf_trans
 from std_msgs.msg import Float64MultiArray
-from geometry_msgs.msg import Transform
+from geometry_msgs.msg import Transform, PoseStamped
+from nav_msgs.msg import Path
 
 # other
 import numpy as np
-from ros_np_tools import pos_quat_np
+from ros_np_tools import pos_quat_np, tf_mat, pose_msg
 
 
 def get_servo_msg(mat=None, tf_msg=None, base_mat=None, base_tf_msg=None):
@@ -37,3 +38,17 @@ def get_servo_msg(mat=None, tf_msg=None, base_mat=None, base_tf_msg=None):
     servo_msg.data.extend([*base_xy, base_theta])
 
     return servo_msg
+
+def gen_no_movement_arm_path(base_path, base_tool_mat):
+    """ Generate an arm path that corresponds to a base path ensuring a constant
+    transform between the base and the arm. As with other thing functions, assumes that IK
+    is done relative to odom. """
+    T_rt = base_tool_mat
+    arm_path = Path()
+    for pose in base_path.poses:
+        base_pose_mat = tf_mat.pose_msg_to_mat(pose.pose)
+        arm_pose = PoseStamped()
+        arm_pose.pose = pose_msg.mat_to_pose_msg(np.dot(base_pose_mat, T_rt))
+        arm_path.poses.append(arm_pose)
+
+    return arm_path
