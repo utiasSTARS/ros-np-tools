@@ -15,6 +15,8 @@ from ros_np_tools.pose_msg import tf_msg_to_pose_msg
 
 
 def pose_msg_to_mat(pose):
+    if hasattr(pose, 'header'):  # in case pose is a stamped msg
+        pose = pose.pose
     T = np.zeros([4, 4])
     T[3, 3] = 1.0
     T[0, 3] = pose.position.x

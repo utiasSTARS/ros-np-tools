@@ -9,7 +9,9 @@ from nav_msgs.msg import Path
 import numpy as np
 
 # own
-from ros_np_tools.pose_msg import tf_msg_to_pose_msg
+import ros_np_tools.pose_msg as pose_msg
+import ros_np_tools.tf_mat as tf_mat
+import ros_np_tools.pos_quat_np as pos_quat_np
 
 def quat_slerp(qa, qb, t):
     """given two quaternions, output the interpolation at t, assuming qa is at t=0 and qb is at t=1.
@@ -64,7 +66,32 @@ def lerp(va, vb, t):
     Note: all vectors will be (3,1) numpy arrays"""
     return va * (1 - t) + vb * t
 
-def generate_smooth_path(first_frame, last_frame, trans_velocity, rot_velocity, time_btwn_poses):
+def get_num_path_pts(first_frame, last_frame, trans_velocity, rot_velocity, time_btwn_poses):
+    pos_quat_a = pos_quat_np.tf_msg_to_pos_quat(first_frame)
+    pos_quat_b = pos_quat_np.tf_msg_to_pos_quat(last_frame)
+    va = pos_quat_a[:3].reshape(3, 1)
+    vb = pos_quat_b[:3].reshape(3, 1)
+    qa = Quaternion(*pos_quat_a[3:])
+    qb = Quaternion(*pos_quat_b[3:])
+
+    trans_dist = np.linalg.norm(va - vb)
+
+    # rot distance, see http://www.boris-belousov.net/2016/12/01/quat-dist/ and
+    # Metrics for 3D Rotations: Comparison and Analysis by Huynh
+    rot_dist = 2 * np.arccos(np.clip(
+        np.abs(qa.w * qb.w + qa.x * qb.x + qa.y * qb.y + qa.z * qb.z), -1.0, 1.0
+    ))
+
+    distance_btwn_poses = trans_velocity * time_btwn_poses
+    distance_btwn_poses_rot = rot_velocity * time_btwn_poses
+    min_num_pts_trans = int(np.round(trans_dist / distance_btwn_poses))
+    min_num_pts_rot = int(np.round(rot_dist / distance_btwn_poses_rot))
+    num_pts = max(min_num_pts_rot, min_num_pts_trans)
+
+    return num_pts
+
+def generate_smooth_path(first_frame, last_frame, trans_velocity=None, rot_velocity=None, time_btwn_poses=None,
+                         num_pts=None):
     """ Given two Transform msgs from ros, generate a smooth trajectory
     (as a Path nav_msg) between them. Both transform msgs should be in the same relative frame.
 
@@ -72,7 +99,12 @@ def generate_smooth_path(first_frame, last_frame, trans_velocity, rot_velocity, 
     trans_velocity is m/s, rot_velocity is rad/s.
 
     Note that time_btwn_poses is currently hardcoded in thing_control, and should
-    be the value from there, or you won't get the desired velocity."""
+    be the value from there, or you won't get the desired velocity.
+
+    If num_pts is not None, trans_velocity, rot_velocity, and time_btwn_poses are all ignored."""
+
+    assert ((trans_velocity is not None and rot_velocity is not None and time_btwn_poses is not None) or
+            (num_pts is not None)), "Either set trans_velocity, rot_velocity, and time_btwn_poses or num_pts"
 
     va = np.array([first_frame.translation.x,
                    first_frame.translation.y,
@@ -89,21 +121,10 @@ def generate_smooth_path(first_frame, last_frame, trans_velocity, rot_velocity, 
                     last_frame.rotation.z,
                     last_frame.rotation.w)
 
-    trans_dist = np.linalg.norm(va - vb)
+    if num_pts is None:
+        num_pts = get_num_path_pts(first_frame, last_frame, trans_velocity, rot_velocity, time_btwn_poses)
 
-    # rot distance, see http://www.boris-belousov.net/2016/12/01/quat-dist/ and
-    # Metrics for 3D Rotations: Comparison and Analysis by Huynh
-    rot_dist = 2 * np.arccos(np.clip(
-        np.abs(qa.w * qb.w + qa.x * qb.x + qa.y * qb.y + qa.z * qb.z), -1.0, 1.0
-    ))
-
-    distance_btwn_poses = trans_velocity * time_btwn_poses
-    distance_btwn_poses_rot = rot_velocity * time_btwn_poses
-    min_num_pts_trans = int(np.round(trans_dist / distance_btwn_poses))
-    min_num_pts_rot = int(np.round(rot_dist / distance_btwn_poses_rot))
     ret_path = Path()
-
-    num_pts = max(min_num_pts_rot, min_num_pts_trans)
     for i in range(num_pts):
         # lerp and slerp for next point
         t = float(i) / num_pts
@@ -122,6 +143,26 @@ def generate_smooth_path(first_frame, last_frame, trans_velocity, rot_velocity, 
         ret_path.poses.append(p)
 
     final_pose = PoseStamped()
-    final_pose.pose = tf_msg_to_pose_msg(last_frame)
+    final_pose.pose = pose_msg.tf_msg_to_pose_msg(last_frame)
     ret_path.poses.append(final_pose)
     return ret_path
+
+def get_new_bases_for_path(path: Path, new_ref_path: Path):
+    """ Given a set of poses in a path and the same number of poses in a second path (new_ref_path),
+    make the base reference frames for the path be based on the poses from the new_ref_path.
+
+    Mathematically, left-multiply each T matrix from the path by each T matrix from new_ref_path.
+
+    E.g. A path could be a series of poses given in the frame of the base, and the new_ref_path could be a series
+     of base poses given in the world frame."""
+    assert len(path.poses) == len(new_ref_path.poses), "Number of poses in path (%d) does not match number" \
+                                   "of poses in new_ref_path (%d)" % (len(path.poses), len(new_ref_path.poses))
+
+    new_path = Path()
+    for orig_pose, new_ref_pose in zip(path.poses, new_ref_path.poses):
+        new_T = tf_mat.pose_msg_to_mat(new_ref_pose).dot(tf_mat.pose_msg_to_mat(orig_pose))
+        new_pose = PoseStamped()
+        new_pose.pose = pose_msg.mat_to_pose_msg(new_T)
+        new_path.poses.append(new_pose)
+
+    return new_path
