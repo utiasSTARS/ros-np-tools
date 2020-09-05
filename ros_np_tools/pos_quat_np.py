@@ -46,3 +46,14 @@ def mat_to_pos_quat(mat, quat_order='xyzw'):
         quat_fixed = quat
 
     return np.array([*pos, *quat_fixed])
+
+def get_trans_rot_dist(pos_quat_a, pos_quat_b):
+    trans_dist = np.linalg.norm(pos_quat_a[:3] - pos_quat_b[:3])
+    # rot distance, see http://www.boris-belousov.net/2016/12/01/quat-dist/ and
+    # Metrics for 3D Rotations: Comparison and Analysis by Huynh
+    qa = pos_quat_a[3:]
+    qb = pos_quat_b[3:]
+    rot_dist = 2 * np.arccos(np.clip(
+        np.abs(qa[0] * qb[0] + qa[1] * qb[1] + qa[2] * qb[2] + qa[3] * qb[3]), -1.0, 1.0
+    ))
+    return trans_dist, rot_dist
