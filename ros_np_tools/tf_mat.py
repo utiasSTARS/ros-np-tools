@@ -31,7 +31,7 @@ def pose_msg_to_mat(pose):
     T[:3, :3] = rot[:3, :3]
     return T
 
-def invertTransform(T_in):
+def invert_transform(T_in):
     """return inverse transform of T_in, assuming T_in is affine 4x4 transformation"""
     T_out = np.eye(4)
     C_out_inv = T_in[:3, :3].T # exploiting that C^T = C^-1 for rotations
