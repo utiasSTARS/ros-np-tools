@@ -39,6 +39,16 @@ def get_servo_msg(mat=None, tf_msg=None, base_mat=None, base_tf_msg=None):
 
     return servo_msg
 
+
+def gen_no_movement_base_path(arm_path, odom_base_mat):
+    """ Generate a base path that corresponds to an arm path, ensuring that the base does not move. """
+    des_base_pose = PoseStamped()
+    des_base_pose.pose = pose_msg.mat_to_pose_msg(odom_base_mat)
+    base_path = Path()
+    base_path.poses = [des_base_pose] * len(arm_path.poses)
+    return base_path
+
+
 def gen_no_movement_arm_path(base_path, base_tool_mat):
     """ Generate an arm path that corresponds to a base path ensuring a constant
     transform between the base and the arm. As with other thing functions, assumes that IK
