@@ -10,6 +10,7 @@ from nav_msgs.msg import Path
 
 # other
 import numpy as np
+from numpy.linalg import norm, inv
 from ros_np_tools import pos_quat_np, tf_mat, pose_msg
 
 
@@ -52,3 +53,40 @@ def gen_no_movement_arm_path(base_path, base_tool_mat):
         arm_path.poses.append(arm_pose)
 
     return arm_path
+
+def get_position_impedance_control_action(T_des, K, ft, f_max, t_max, T_ft_ref_to_des_ref):
+    """ Generate a modified action using a simple position impedance control scheme with a wrist-mounted ft sensor.
+
+    # TODO add damping and mass with vel and accel terms.
+
+    :param T_des:              Desired pose given as 4x4 transform matrix
+    :param K:                    Stiffness matrix. Should be 6x6, PD, symmetric. Can be diagonal.
+    :param ft:                   6x1 Force torque sensor reading.
+    :param f_max:                Maximum norm force allowed before modified T positions are output.
+    :param t_max:                Maximum norm torque allowed before modified T rotations are output.
+    :param T_ft_ref_to_des_ref:  T matrix from ref frame of ft to ref frame of mat_des.
+    """
+    force_ref = T_ft_ref_to_des_ref[:3, :3].dot(ft[:3])
+    torque_ref = T_ft_ref_to_des_ref[:3, :3].dot(ft[3:])
+
+    # eqn: F_ext - F_max = K (p_mod - p_des) --> K^-1 (F_ext - F_max) + p_des = p_mod
+    f_norm = norm(ft[:3])
+    if f_norm > f_max:
+        p_mod = inv(K).dot(force_ref - (force_ref / f_norm).dot(f_max)) + T_des[:3, 3]
+    else:
+        p_mod = T_des[:3, 3]
+
+    # eqn: t_ext - t_max = K * R_mod * R_des --> K^-1 * R_t_ext * R_t_max * R_des^-1 = R_mod
+    t_norm = norm(ft[3:])
+    if t_norm > t_max:
+        R_t_ext = tf_trans.rotation_matrix(t_norm, torque_ref / t_norm)[:3, :3]
+        R_t_max = tf_trans.rotation_matrix(-t_max, torque_ref / t_norm)[:3, :3]
+        R_mod = inv(K).dot(R_t_ext).dot(R_t_max).dot(T_des[:3, :3].T)
+    else:
+        R_mod = T_des[:3, :3]
+
+    T_mod = np.eye(4)
+    T_mod[:3, 3] = p_mod
+    T_mod[:3, :3] = R_mod
+
+    return T_mod
