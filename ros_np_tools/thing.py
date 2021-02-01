@@ -64,39 +64,61 @@ def gen_no_movement_arm_path(base_path, base_tool_mat):
 
     return arm_path
 
-def get_position_impedance_control_action(T_des, K, ft, f_max, t_max, T_ft_ref_to_des_ref):
+
+def get_position_impedance_control_action(T_des, K, D, ft, f_max, t_max, T_ft_ref_to_des_ref, T_ft_to_tool,
+                                          T_tool_to_des, vel):
     """ Generate a modified action using a simple position impedance control scheme with a wrist-mounted ft sensor.
 
     # TODO add damping and mass with vel and accel terms.
 
     :param T_des:              Desired pose given as 4x4 transform matrix
     :param K:                    Stiffness matrix. Should be 6x6, PD, symmetric. Can be diagonal.
+    :param D:                    Damping matrix. Should be 6x6, PD, symmetric. Can be diagonal.
     :param ft:                   6x1 Force torque sensor reading.
     :param f_max:                Maximum norm force allowed before modified T positions are output.
     :param t_max:                Maximum norm torque allowed before modified T rotations are output.
     :param T_ft_ref_to_des_ref:  T matrix from ref frame of ft to ref frame of mat_des.
+    :param T_ft_to_tool:         fixed T matrix from ft to tool.
+    :param vel:                 6 DOF velocity.
     """
-    force_ref = T_ft_ref_to_des_ref[:3, :3].dot(ft[:3])
+    force_ref = T_ft_ref_to_des_ref[:3, :3].T.dot(ft[:3])
     torque_ref = T_ft_ref_to_des_ref[:3, :3].dot(ft[3:])
 
-    # eqn: F_ext - F_max = K (p_mod - p_des) --> K^-1 (F_ext - F_max) + p_des = p_mod
+    t_norm = norm(torque_ref)
+    if t_norm > t_max:
+
+        T_des_ref_to_ft = tf_mat.invert_transform(T_ft_ref_to_des_ref)
+        new_torque = inv(K[3:, 3:]).dot(ft[3:])
+        new_t_norm = norm(new_torque)
+        new_t_max = 1 / K[3, 3] * t_max
+        R_t_ext = tf_trans.rotation_matrix(new_t_norm - new_t_max, new_torque / new_t_norm)[:3, :3]
+        T_R_mod = np.eye(4)
+        T_R_mod[:3, :3] = R_t_ext
+        T_mod = T_des_ref_to_ft.dot(T_R_mod).dot(T_ft_to_tool).dot(T_tool_to_des)
+
+    else:
+        T_mod = T_des
+
+    # eqn: F_ext - F_max = K (p_mod - p_des) + D (v_act - 0) --> K^-1 (F_ext - F_max - D(v_act)) + p_des = p_mod
     f_norm = norm(ft[:3])
     if f_norm > f_max:
-        p_mod = inv(K).dot(force_ref - (force_ref / f_norm).dot(f_max)) + T_des[:3, 3]
-    else:
-        p_mod = T_des[:3, 3]
+        new_force = force_ref - (force_ref / f_norm).dot(f_max)
+        # new_force = force_ref - (force_ref / f_norm).dot(f_max) - D[:3, :3].dot(vel[:3])
+        # norm_new_force = norm(new_force)
+        # vel_term = D[:3, :3].dot(vel[:3])
+        # norm_vel_term = norm(vel_term)
+        # if norm_new_force > norm_vel_term:
+        #     new_force = new_force - vel_term
+        # print('old new force: ', force_ref - (force_ref / f_norm).dot(f_max))
+        # print('new new force: ', new_force)
+        # new_force_mag = norm(new_force)
+        # print(new_force_mag)
+        # if new_force_mag > 5:
+        #     new_force = new_force / new_force_mag * 20
+        T_mod[:3, 3] = inv(K[:3, :3]).dot(new_force) + T_mod[:3, 3]
 
-    # eqn: t_ext - t_max = K * R_mod * R_des --> K^-1 * R_t_ext * R_t_max * R_des^-1 = R_mod
-    t_norm = norm(ft[3:])
-    if t_norm > t_max:
-        R_t_ext = tf_trans.rotation_matrix(t_norm, torque_ref / t_norm)[:3, :3]
-        R_t_max = tf_trans.rotation_matrix(-t_max, torque_ref / t_norm)[:3, :3]
-        R_mod = inv(K).dot(R_t_ext).dot(R_t_max).dot(T_des[:3, :3].T)
-    else:
-        R_mod = T_des[:3, :3]
-
-    T_mod = np.eye(4)
-    T_mod[:3, 3] = p_mod
-    T_mod[:3, :3] = R_mod
+    # T_mod = np.eye(4)
+    # T_mod[:3, 3] = p_mod
+    # T_mod[:3, :3] = R_mod
 
     return T_mod
